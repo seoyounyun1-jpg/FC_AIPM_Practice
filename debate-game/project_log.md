@@ -69,3 +69,64 @@
 ### 다음 단계
 
 2단계(온보딩 화면 — 관심사 태그 선택)로 진행 예정. 진행 전 사용자 확인 예정.
+
+---
+
+## 2026-07-15 — 2단계: 온보딩 화면 (관심사 태그 선택)
+
+### 완료 내용
+
+1. **온보딩 검증 로직** (`src/lib/onboardingValidation.js`)
+   - 닉네임 검증(공백/빈값/20자 초과 거부), 관심사 태그 검증(2~5개, 후보 외 태그 거부)
+   - `buildInterestProfile`: 선택 태그를 `[{tag, weight:1}]` 형태로 변환 (DB `interest_profile` 저장 형식)
+   - `toggleTagSelection`: 태그 선택/해제, 최대 5개 초과 시 추가 무시
+
+2. **로컬 사용자 식별** (`src/lib/localUser.js`) — 별도 로그인 없이 `localStorage`에 생성된
+   `users.id`를 저장해 재방문 시 온보딩을 건너뛰도록 함 (브리프에 인증 플로우가 정의되어 있지
+   않아 프로토타입 단계에서 채택한 설계)
+
+3. **Supabase 연동** (`src/lib/usersApi.js`): `createUser`, `getUser`
+
+4. **화면** (`src/pages/OnboardingPage.jsx`)
+   - 닉네임 입력 + 관심사 태그 칩 다중 선택(2~5개, 선택 개수 카운터 표시)
+   - 유효성 미충족 시 제출 버튼 비활성화, 실패 시 에러 메시지 인라인 노출
+   - Supabase 미설정 상태를 사전에 배너로 안내
+
+5. **라우팅 재구성** (`src/App.jsx`): `/` 진입 시 로컬 사용자 존재 여부로
+   `/onboarding` 또는 `/home`으로 리다이렉트. `/home`은 3단계에서 실제 홈 화면으로
+   교체될 임시 화면(`HomePlaceholder.jsx`, 유저 닉네임/티어/경험치/관심사 표시)
+
+### 버그 수정
+
+- `src/lib/supabaseClient.js`: `VITE_SUPABASE_URL`이 비어있으면 `createClient('', '')`가
+  즉시 예외를 던져 앱 전체가 부팅 시점에 크래시하는 문제 발견 (Playwright E2E 테스트 중 발견).
+  더미 URL로 폴백하도록 수정하여, 실제 Supabase 미설정 시에도 앱은 정상 렌더링되고
+  API 호출 시점에만 에러가 발생하도록 개선. `isSupabaseConfigured` 플래그를 노출해
+  화면에서 사전 안내 배너를 띄울 수 있도록 함.
+
+### 테스트 결과
+
+- **코드 레벨 테스트** (`npm test`): 35개 항목 전부 통과 (기존 18개 + 온보딩 검증 로직 17개 추가)
+- **DB 실동작 검증** (로컬 PostgreSQL): `buildInterestProfile` 산출물을 그대로 `users.interest_profile`에
+  삽입해 정상 저장/조회 확인, `nickname` NOT NULL 및 `current_tier` CHECK 제약 정상 거부 확인
+- **E2E 브라우저 테스트** (Playwright + 사전 설치된 Chromium, 임시 스크립트로 실행 후 삭제):
+  - 최초 진입 시 `/onboarding` 자동 리다이렉트 확인
+  - 관심사 미선택/1개 선택 시 제출 버튼 비활성화, 2개 이상 선택 시 활성화 확인
+  - 5개 선택 후 6번째 태그 클릭이 무시됨(카운터 5/5 유지) 확인
+  - 선택된 태그 재클릭 시 해제됨 확인
+  - Supabase 미설정 상태에서 제출 시 앱이 죽지 않고 에러 메시지가 화면에 정상 노출됨 확인
+    (이 과정에서 위 크래시 버그를 발견/수정함)
+- **빌드/린트**: `npm run build`, `npm run lint`(oxlint) 통과
+
+### 사용자가 직접 확인해야 할 항목
+
+1. Supabase 프로젝트 연결(`.env` 설정 + 마이그레이션/시드 SQL 실행)이 아직이라면, 온보딩에서
+   "시작하기"를 눌러도 저장은 실패합니다(에러 메시지로 안내됨). Supabase 연결 후 실제 저장이
+   되는지 브라우저에서 직접 확인해주세요.
+2. 온보딩 완료 후 `/home`(임시 화면)에 닉네임·티어·경험치·관심사가 올바르게 표시되는지 확인해주세요.
+3. 브라우저 개발자 도구 > Application > Local Storage에서 `debate_game_user_id` 값이
+   생성되는지, 새로고침 시 온보딩이 다시 뜨지 않는지 확인해주세요.
+
+### 다음 단계
+
+3단계(홈 화면 — 추천 카드 피드)로 진행 예정.

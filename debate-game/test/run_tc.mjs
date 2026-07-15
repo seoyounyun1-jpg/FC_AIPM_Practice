@@ -1,5 +1,5 @@
 /**
- * AI 논쟁 게임 - 1단계(스캐폴딩/DB 스키마/시드 데이터) 코드 레벨 테스트
+ * AI 논쟁 게임 - 코드 레벨 테스트 (단계별로 누적 추가)
  * 실행: node test/run_tc.mjs
  */
 import { BRONZE_SEED_TOPICS } from '../src/data/seedTopics.js';
@@ -15,6 +15,12 @@ import {
   TIER_UP_MIN_AVG_SCORE,
   TIER_UP_MIN_ROUNDS,
 } from '../src/data/constants.js';
+import {
+  validateNickname,
+  validateInterestSelection,
+  buildInterestProfile,
+  toggleTagSelection,
+} from '../src/lib/onboardingValidation.js';
 
 let passed = 0;
 let failed = 0;
@@ -90,6 +96,65 @@ test('턴이 유저/AI 각 4턴씩으로 균등 분배된다', TURNS_PER_SIDE ==
 test('힌트는 라운드당 최대 2회다', MAX_HINTS_PER_ROUND === 2);
 test('티어 승급 기준 평균 점수는 70점이다', TIER_UP_MIN_AVG_SCORE === 70);
 test('티어 승급 기준 라운드 수는 3이다', TIER_UP_MIN_ROUNDS === 3);
+
+console.log('\n[TC-3] 온보딩 검증 로직 (브리프 섹션 2-1)');
+test('닉네임 미입력은 무효 처리된다', validateNickname('').valid === false);
+test('공백만 입력한 닉네임은 무효 처리된다', validateNickname('   ').valid === false);
+test('정상 닉네임은 유효 처리된다', validateNickname('논리왕').valid === true);
+test('21자 닉네임은 무효 처리된다', validateNickname('가'.repeat(21)).valid === false);
+test('20자 닉네임은 유효 처리된다', validateNickname('가'.repeat(20)).valid === true);
+
+test('관심사 0개 선택은 무효 처리된다', validateInterestSelection([]).valid === false);
+test('관심사 1개 선택은 무효 처리된다 (최소 2개)', validateInterestSelection(['여행']).valid === false);
+test(
+  '관심사 2개 선택은 유효 처리된다 (최소 기준)',
+  validateInterestSelection(['여행', '음식/취향']).valid === true,
+);
+test(
+  '관심사 5개 선택은 유효 처리된다 (최대 기준)',
+  validateInterestSelection(['여행', '음식/취향', '라이프스타일', '일/커리어', '인간관계']).valid ===
+    true,
+);
+test(
+  '관심사 6개 선택은 무효 처리된다 (최대 초과)',
+  validateInterestSelection(['여행', '음식/취향', '라이프스타일', '일/커리어', '인간관계', '사회이슈'])
+    .valid === false,
+);
+test(
+  '알 수 없는 태그가 섞이면 무효 처리된다',
+  validateInterestSelection(['여행', '음식/취향', '없는태그']).valid === false,
+);
+test(
+  '중복 선택은 1개로 카운트된다 (2개 미만이면 무효)',
+  validateInterestSelection(['여행', '여행']).valid === false,
+);
+
+test(
+  'buildInterestProfile은 태그별 weight 1인 객체 배열을 만든다',
+  JSON.stringify(buildInterestProfile(['여행', '음식/취향'])) ===
+    JSON.stringify([
+      { tag: '여행', weight: 1 },
+      { tag: '음식/취향', weight: 1 },
+    ]),
+);
+test(
+  'buildInterestProfile은 중복 태그를 제거한다',
+  buildInterestProfile(['여행', '여행', '음식/취향']).length === 2,
+);
+
+test(
+  'toggleTagSelection은 미선택 태그를 추가한다',
+  JSON.stringify(toggleTagSelection(['여행'], '음식/취향')) === JSON.stringify(['여행', '음식/취향']),
+);
+test(
+  'toggleTagSelection은 이미 선택된 태그를 제거한다',
+  JSON.stringify(toggleTagSelection(['여행', '음식/취향'], '여행')) === JSON.stringify(['음식/취향']),
+);
+test(
+  'toggleTagSelection은 5개 선택된 상태에서 새 태그 추가를 무시한다 (최대 제한)',
+  toggleTagSelection(['여행', '음식/취향', '라이프스타일', '일/커리어', '인간관계'], '사회이슈')
+    .length === 5,
+);
 
 console.log(`\n총 ${passed + failed}개 중 ${passed}개 통과, ${failed}개 실패\n`);
 process.exit(failed > 0 ? 1 : 0);
