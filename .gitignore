@@ -5,9 +5,6 @@
 ai-pm-app/.env
 ai-pm-app/.env.local
 ai-pm-app/.env.*.local
-debate-game/.env
-debate-game/.env.local
-debate-game/.env.*.local
 
 # ===== Claude MCP / 개인 설정 (토큰 포함) =====
 .claude/mcp.json
@@ -17,13 +14,11 @@ debate-game/.env.*.local
 # ===== 의존성 =====
 node_modules/
 ai-pm-app/node_modules/
-debate-game/node_modules/
 
 # ===== 빌드 산출물 =====
 dist/
 dist-ssr/
 ai-pm-app/dist/
-debate-game/dist/
 
 # ===== 에디터 =====
 .vscode/*
