@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import OnboardingPage from './pages/OnboardingPage.jsx';
-import HomePlaceholder from './pages/HomePlaceholder.jsx';
+import HomePage from './pages/HomePage.jsx';
+import RoundPlaceholder from './pages/RoundPlaceholder.jsx';
 import { getLocalUserId } from './lib/localUser.js';
 
 function RootRedirect() {
@@ -13,7 +14,8 @@ export default function App() {
     <Routes>
       <Route path="/" element={<RootRedirect />} />
       <Route path="/onboarding" element={<OnboardingPage />} />
-      <Route path="/home" element={<HomePlaceholder />} />
+      <Route path="/home" element={<HomePage />} />
+      <Route path="/round/:topicId" element={<RoundPlaceholder />} />
     </Routes>
   );
 }

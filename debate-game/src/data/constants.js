@@ -24,6 +24,12 @@ export const TIER_LABELS = {
 
 export const PERSONAS = ['직설형', '회유형', '데이터형'];
 
+export const PERSONA_DESCRIPTIONS = {
+  직설형: '허점을 발견하면 즉시, 단도직입적으로 지적하는 공격적인 논객',
+  회유형: '공감하는 척하며 점진적으로 논리의 허점을 파고드는 논객',
+  데이터형: '통계·사례·연구 결과를 근거로 논증을 전개하는 논객',
+};
+
 export const TOTAL_TURNS = 8; // 유저 4턴 + AI 4턴
 export const TURNS_PER_SIDE = TOTAL_TURNS / 2;
 

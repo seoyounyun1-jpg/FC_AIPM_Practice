@@ -21,6 +21,14 @@ import {
   buildInterestProfile,
   toggleTagSelection,
 } from '../src/lib/onboardingValidation.js';
+import { recommendTopics, filterTopicsByTag } from '../src/lib/recommend.js';
+import {
+  calcRoundAverage,
+  computeStars,
+  buildTopicClearMap,
+  countTierUpProgress,
+} from '../src/lib/tierProgress.js';
+import { assignPersonaForTopic } from '../src/lib/personaAssignment.js';
 
 let passed = 0;
 let failed = 0;
@@ -154,6 +162,97 @@ test(
   'toggleTagSelection은 5개 선택된 상태에서 새 태그 추가를 무시한다 (최대 제한)',
   toggleTagSelection(['여행', '음식/취향', '라이프스타일', '일/커리어', '인간관계'], '사회이슈')
     .length === 5,
+);
+
+console.log('\n[TC-4] 추천 로직 (브리프 섹션 2-2)');
+const t1 = { id: 't1', interest_tags: ['여행'], created_at: '2024-01-01T00:00:00Z' };
+const t2 = { id: 't2', interest_tags: ['음식/취향'], created_at: '2024-01-02T00:00:00Z' };
+const t3 = { id: 't3', interest_tags: ['여행', '음식/취향'], created_at: '2024-01-03T00:00:00Z' };
+const t4 = { id: 't4', interest_tags: ['철학/윤리'], created_at: '2024-01-04T00:00:00Z' };
+const profile = [
+  { tag: '여행', weight: 1 },
+  { tag: '음식/취향', weight: 1 },
+];
+
+test(
+  '관심사 교집합이 많은 주제가 먼저 추천된다',
+  recommendTopics([t1, t2, t3, t4], profile, { limit: 4 })[0].id === 't3',
+);
+test(
+  '교집합 개수가 같으면 최신 등록 주제가 우선한다',
+  recommendTopics([t1, t2], profile, { limit: 2 })[0].id === 't2',
+);
+test(
+  '추천 개수가 limit에 못 미치면 관심사 밖 주제로 채워진다',
+  recommendTopics([t1, t2, t3, t4], profile, { limit: 4 }).length === 4,
+);
+test(
+  '관심사 밖 주제는 교집합 주제보다 뒤에 온다',
+  recommendTopics([t1, t2, t3, t4], profile, { limit: 4 }).at(-1).id === 't4',
+);
+test(
+  'limit을 초과하는 개수는 반환하지 않는다',
+  recommendTopics([t1, t2, t3, t4], profile, { limit: 2 }).length === 2,
+);
+test(
+  'filterTopicsByTag는 해당 태그를 포함한 주제만, 최신순으로 반환한다',
+  JSON.stringify(filterTopicsByTag([t1, t2, t3], '여행').map((t) => t.id)) ===
+    JSON.stringify(['t3', 't1']),
+);
+
+console.log('\n[TC-5] 티어 진행도 / 별점 로직 (브리프 섹션 2-3, 4)');
+test(
+  'calcRoundAverage는 3축 평균을 계산한다',
+  calcRoundAverage({ validity_score: 60, responsiveness_score: 70, persuasion_score: 80 }) === 70,
+);
+test('judgments가 없으면 calcRoundAverage는 null이다', calcRoundAverage(null) === null);
+
+test('80점 이상은 3성이다', computeStars(85) === 3);
+test('70~79점은 2성이다', computeStars(72) === 2);
+test('50~69점은 1성이다', computeStars(55) === 1);
+test('50점 미만은 0성이다', computeStars(30) === 0);
+test('미도전(null)은 0성이다', computeStars(null) === 0);
+
+const completedRounds = [
+  { topic_id: 't1', avgScore: 40 },
+  { topic_id: 't1', avgScore: 85 }, // 같은 주제 재도전 시 최고 점수만 반영
+  { topic_id: 't2', avgScore: 72 },
+];
+const clearMap = buildTopicClearMap(completedRounds);
+test('같은 주제를 여러 번 도전하면 최고 점수 기준으로 별점이 매겨진다', clearMap.get('t1').stars === 3);
+test('도전한 주제는 attempted가 true다', clearMap.get('t1').attempted === true);
+test('도전하지 않은 주제는 clearMap에 없다', clearMap.get('t3') === undefined);
+
+test(
+  '티어 승급 진행도: 70점 이상 라운드만 카운트된다 (40점 제외, 85/72점만 반영)',
+  countTierUpProgress(completedRounds).successCount === 2,
+);
+test(
+  '티어 승급 진행도: 3라운드 이상이어도 required로 캡핑된다',
+  countTierUpProgress([
+    { topic_id: 'a', avgScore: 90 },
+    { topic_id: 'b', avgScore: 90 },
+    { topic_id: 'c', avgScore: 90 },
+    { topic_id: 'd', avgScore: 90 },
+  ]).successCount === 3,
+);
+test(
+  '티어 승급 진행도: 3라운드 달성 시 isEligible이 true다',
+  countTierUpProgress([
+    { topic_id: 'a', avgScore: 90 },
+    { topic_id: 'b', avgScore: 90 },
+    { topic_id: 'c', avgScore: 90 },
+  ]).isEligible === true,
+);
+
+console.log('\n[TC-6] 페르소나 배정 (브리프 섹션 2-3)');
+test(
+  '같은 주제 ID는 항상 같은 페르소나로 배정된다 (결정론적)',
+  assignPersonaForTopic('topic-abc') === assignPersonaForTopic('topic-abc'),
+);
+test(
+  '배정된 페르소나는 항상 PERSONAS 목록 안에 있다',
+  ['직설형', '회유형', '데이터형'].includes(assignPersonaForTopic('topic-xyz')),
 );
 
 console.log(`\n총 ${passed + failed}개 중 ${passed}개 통과, ${failed}개 실패\n`);
