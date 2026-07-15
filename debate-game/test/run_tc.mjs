@@ -29,6 +29,13 @@ import {
   countTierUpProgress,
 } from '../src/lib/tierProgress.js';
 import { assignPersonaForTopic } from '../src/lib/personaAssignment.js';
+import { nextTurnNumber, whoseTurn, isRoundComplete } from '../src/lib/turnFlow.js';
+import {
+  COMMON_INSTRUCTION,
+  PERSONA_SYSTEM_PROMPTS,
+  buildOpponentSystemPrompt,
+  buildHintSystemPrompt,
+} from '../src/prompts/debatePrompts.js';
 
 let passed = 0;
 let failed = 0;
@@ -254,6 +261,53 @@ test(
   '배정된 페르소나는 항상 PERSONAS 목록 안에 있다',
   ['직설형', '회유형', '데이터형'].includes(assignPersonaForTopic('topic-xyz')),
 );
+
+console.log('\n[TC-7] 턴 진행 로직 (브리프 섹션 4 — 고정 8턴, 유저 선공)');
+test('0턴 상태에서 다음 턴 번호는 1이다', nextTurnNumber(0) === 1);
+test('7턴 진행된 상태에서 다음 턴 번호는 8이다', nextTurnNumber(7) === 8);
+test('0턴(라운드 시작)은 유저 차례다', whoseTurn(0) === 'user');
+test('1턴 진행 후(유저 1턴 완료)는 AI 차례다', whoseTurn(1) === 'ai');
+test('2턴 진행 후는 다시 유저 차례다', whoseTurn(2) === 'user');
+test('7턴 진행 후(마지막 유저 턴 전)는 AI 차례다', whoseTurn(7) === 'ai');
+test('7턴까지는 라운드가 끝나지 않는다', isRoundComplete(7) === false);
+test('8턴이 되면 라운드가 종료된다', isRoundComplete(8) === true);
+
+console.log('\n[TC-8] AI 논객/힌트 시스템 프롬프트 (브리프 섹션 5)');
+test(
+  '공통 지시에 "논리적으로\\n밀렸음을 인정" 문구가 포함된다',
+  COMMON_INSTRUCTION.includes('밀렸음을 인정'),
+);
+test(
+  '페르소나 시스템 프롬프트가 직설형/회유형/데이터형 3종 모두 정의되어 있다',
+  ['직설형', '회유형', '데이터형'].every((p) => typeof PERSONA_SYSTEM_PROMPTS[p] === 'string'),
+);
+test(
+  '데이터형 프롬프트는 통계 지어내기 금지 문구를 포함한다',
+  PERSONA_SYSTEM_PROMPTS.데이터형.includes('지어내지'),
+);
+
+const builtPrompt = buildOpponentSystemPrompt({
+  topicTitle: '민트초코는 맛있다',
+  topicDescription: '테스트 설명',
+  persona: '직설형',
+  weakness: '개인 취향을 보편적 사실처럼 일반화',
+});
+test('조립된 시스템 프롬프트에 공통 지시가 포함된다', builtPrompt.includes(COMMON_INSTRUCTION));
+test('조립된 시스템 프롬프트에 페르소나 지시가 포함된다', builtPrompt.includes(PERSONA_SYSTEM_PROMPTS.직설형));
+test('조립된 시스템 프롬프트에 주제명이 포함된다', builtPrompt.includes('민트초코는 맛있다'));
+test('조립된 시스템 프롬프트에 내부 약점 지침이 포함된다', builtPrompt.includes('개인 취향을 보편적 사실처럼 일반화'));
+test(
+  '알 수 없는 페르소나로 조립 시 에러를 던진다',
+  (() => {
+    try {
+      buildOpponentSystemPrompt({ topicTitle: 't', persona: '존재안함', weakness: 'x' });
+      return false;
+    } catch {
+      return true;
+    }
+  })(),
+);
+test('힌트 시스템 프롬프트는 정답을 대신 쓰지 말라는 지침을 포함한다', buildHintSystemPrompt().includes('대신 작성하지'));
 
 console.log(`\n총 ${passed + failed}개 중 ${passed}개 통과, ${failed}개 실패\n`);
 process.exit(failed > 0 ? 1 : 0);
