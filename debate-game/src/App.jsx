@@ -3,6 +3,7 @@ import OnboardingPage from './pages/OnboardingPage.jsx';
 import HomePage from './pages/HomePage.jsx';
 import RoundPage from './pages/RoundPage.jsx';
 import ResultPage from './pages/ResultPage.jsx';
+import MyPage from './pages/MyPage.jsx';
 import { getLocalUserId } from './lib/localUser.js';
 
 function RootRedirect() {
@@ -18,6 +19,7 @@ export default function App() {
       <Route path="/home" element={<HomePage />} />
       <Route path="/round/:topicId" element={<RoundPage />} />
       <Route path="/result/:roundId" element={<ResultPage />} />
+      <Route path="/mypage" element={<MyPage />} />
     </Routes>
   );
 }

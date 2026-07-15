@@ -66,6 +66,23 @@ export async function completeRound(roundId) {
   if (error) throw error;
 }
 
+/** 마이페이지(7단계)용: 유저의 전체 티어 완료 라운드 히스토리를 시간순으로 조회한다. */
+export async function getUserRoundHistory(userId) {
+  const { data, error } = await supabase
+    .from('rounds')
+    .select(
+      'id, tier, persona_type, completed_at, ' +
+        'topics(title), ' +
+        'judgments(validity_score, responsiveness_score, persuasion_score)',
+    )
+    .eq('user_id', userId)
+    .eq('status', 'completed')
+    .order('completed_at', { ascending: true });
+
+  if (error) throw error;
+  return data;
+}
+
 /** 결과 화면(5단계)용: 라운드 + 주제 + 턴 전체 + 채점 결과를 한 번에 조회한다. */
 export async function getRoundForResult(roundId) {
   const { data, error } = await supabase

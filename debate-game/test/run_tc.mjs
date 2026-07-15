@@ -33,6 +33,7 @@ import { nextTurnNumber, whoseTurn, isRoundComplete } from '../src/lib/turnFlow.
 import { clampScore, parseJudgmentResult } from '../src/lib/judgmentScoring.js';
 import { JUDGE_SYSTEM_PROMPT, JUDGMENT_JSON_SCHEMA } from '../src/prompts/judgePrompt.js';
 import { calcExpGain, nextTier, evaluateProgression } from '../src/lib/expProgression.js';
+import { buildTrendData, calcOverallAverages } from '../src/lib/historyStats.js';
 import {
   COMMON_INSTRUCTION,
   PERSONA_SYSTEM_PROMPTS,
@@ -379,6 +380,40 @@ test(
   'evaluateProgression은 경험치 획득량도 함께 반환한다',
   evaluateProgression(77.2, twoGoodRounds, 'bronze').expGain === 77,
 );
+
+console.log('\n[TC-11] 마이페이지 — 히스토리/축별 평균 추이 (브리프 섹션 8-7)');
+const historyWithMixedJudging = [
+  {
+    id: 'r1',
+    judgments: [{ validity_score: 60, responsiveness_score: 70, persuasion_score: 80 }],
+  },
+  { id: 'r2', judgments: [] }, // 채점 실패한 라운드 (raw_result 없음)
+  {
+    id: 'r3',
+    judgments: [{ validity_score: 90, responsiveness_score: 80, persuasion_score: 70 }],
+  },
+];
+
+test('buildTrendData는 채점 실패 라운드를 제외한다', buildTrendData(historyWithMixedJudging).length === 2);
+test(
+  'buildTrendData는 시간순 index를 1부터 부여한다',
+  buildTrendData(historyWithMixedJudging)[0].index === 1 &&
+    buildTrendData(historyWithMixedJudging)[1].index === 2,
+);
+test(
+  'buildTrendData는 3축 점수를 한글 키로 그대로 보존한다',
+  buildTrendData(historyWithMixedJudging)[0].논증_타당성 === 60,
+);
+
+const averages = calcOverallAverages(historyWithMixedJudging);
+test('calcOverallAverages는 채점 실패 라운드를 제외하고 평균을 계산한다', averages.roundCount === 2);
+test('calcOverallAverages 논증_타당성 평균이 (60+90)/2=75다', averages.avgValidity === 75);
+test('calcOverallAverages 논점_대응력 평균이 (70+80)/2=75다', averages.avgResponsiveness === 75);
+test('calcOverallAverages 설득력_전개 평균이 (80+70)/2=75다', averages.avgPersuasion === 75);
+
+test('빈 히스토리는 roundCount 0을 반환한다', calcOverallAverages([]).roundCount === 0);
+test('빈 히스토리는 평균값을 null로 반환한다', calcOverallAverages([]).avgValidity === null);
+test('빈 히스토리의 추이 데이터는 빈 배열이다', buildTrendData([]).length === 0);
 
 console.log(`\n총 ${passed + failed}개 중 ${passed}개 통과, ${failed}개 실패\n`);
 process.exit(failed > 0 ? 1 : 0);

@@ -73,7 +73,16 @@ export default function HomePage() {
   return (
     <div className="mx-auto max-w-3xl p-6 pb-24">
       <header className="mb-6 rounded-lg bg-violet-600 p-5 text-white">
-        <p className="text-sm opacity-80">{user.nickname}님</p>
+        <div className="flex items-center justify-between">
+          <p className="text-sm opacity-80">{user.nickname}님</p>
+          <button
+            type="button"
+            onClick={() => navigate('/mypage')}
+            className="text-sm underline opacity-90"
+          >
+            마이페이지
+          </button>
+        </div>
         <div className="mt-1 flex items-baseline justify-between">
           <h1 className="text-2xl font-semibold">{TIER_LABELS[user.current_tier]} 티어</h1>
           <span className="text-sm opacity-90">경험치 {user.exp}</span>
