@@ -4,13 +4,18 @@ import { getUser } from '../lib/usersApi.js';
 import { getTopicById, getTopicWeakness } from '../lib/topicsApi.js';
 import { createRound, addTurn, updateHintCount, completeRound } from '../lib/roundsApi.js';
 import { getOpponentReply, getHint } from '../lib/debateApi.js';
+import { judgeRound } from '../lib/judgingApi.js';
+import { createJudgment } from '../lib/judgmentsApi.js';
+import { parseJudgmentResult } from '../lib/judgmentScoring.js';
 import { assignPersonaForTopic } from '../lib/personaAssignment.js';
 import { nextTurnNumber, isRoundComplete } from '../lib/turnFlow.js';
 import { MAX_HINTS_PER_ROUND } from '../data/constants.js';
 
 /**
- * 라운드 상태 머신: loading -> ready <-> ai-thinking -> completed (| error)
+ * 라운드 상태 머신: loading -> ready <-> ai-thinking -> judging -> completed (| error)
  * ready 상태에서만 유저가 메시지를 보내거나 힌트를 요청할 수 있다.
+ * 8턴이 끝나면 채점(judging)을 자동으로 트리거한다 — 논객 응답 생성과는
+ * 별도의 API 호출로 분리(브리프 확정 원칙).
  */
 export function useDebateRound(topicId, personaFromState) {
   const [status, setStatus] = useState('loading');
@@ -67,6 +72,24 @@ export function useDebateRound(topicId, personaFromState) {
     };
   }, [topicId, personaFromState]);
 
+  const finishRound = useCallback(
+    async (allTurns, roundId, topicData) => {
+      await completeRound(roundId);
+      setStatus('judging');
+      try {
+        const raw = await judgeRound({ topic: topicData, turns: allTurns });
+        const scored = parseJudgmentResult(raw);
+        await createJudgment({ roundId, ...scored, rawResult: raw });
+        setStatus('completed');
+      } catch (err) {
+        console.error('[useDebateRound] 채점 실패', err);
+        setError('채점에 실패했습니다. 라운드는 저장되었으며 나중에 다시 확인해주세요.');
+        setStatus('completed');
+      }
+    },
+    [],
+  );
+
   const submitUserTurn = useCallback(
     async (content) => {
       const trimmed = content.trim();
@@ -87,8 +110,7 @@ export function useDebateRound(topicId, personaFromState) {
         setTurns(turnsWithUser);
 
         if (isRoundComplete(userTurnNumber)) {
-          await completeRound(round.id);
-          setStatus('completed');
+          await finishRound(turnsWithUser, round.id, topic);
           return;
         }
 
@@ -109,8 +131,7 @@ export function useDebateRound(topicId, personaFromState) {
         setTurns(turnsWithAi);
 
         if (isRoundComplete(aiTurnNumber)) {
-          await completeRound(round.id);
-          setStatus('completed');
+          await finishRound(turnsWithAi, round.id, topic);
         } else {
           setStatus('ready');
         }
@@ -120,7 +141,7 @@ export function useDebateRound(topicId, personaFromState) {
         setStatus('ready');
       }
     },
-    [round, status, turns, topic, persona],
+    [round, status, turns, topic, persona, finishRound],
   );
 
   const requestHint = useCallback(async () => {
@@ -140,6 +161,7 @@ export function useDebateRound(topicId, personaFromState) {
     status,
     topic,
     persona,
+    round,
     turns,
     hintsUsed,
     hintText,

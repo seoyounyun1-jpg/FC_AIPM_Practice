@@ -30,6 +30,8 @@ import {
 } from '../src/lib/tierProgress.js';
 import { assignPersonaForTopic } from '../src/lib/personaAssignment.js';
 import { nextTurnNumber, whoseTurn, isRoundComplete } from '../src/lib/turnFlow.js';
+import { clampScore, parseJudgmentResult } from '../src/lib/judgmentScoring.js';
+import { JUDGE_SYSTEM_PROMPT, JUDGMENT_JSON_SCHEMA } from '../src/prompts/judgePrompt.js';
 import {
   COMMON_INSTRUCTION,
   PERSONA_SYSTEM_PROMPTS,
@@ -308,6 +310,42 @@ test(
   })(),
 );
 test('힌트 시스템 프롬프트는 정답을 대신 쓰지 말라는 지침을 포함한다', buildHintSystemPrompt().includes('대신 작성하지'));
+
+console.log('\n[TC-9] 채점 시스템 프롬프트/스키마/점수 파싱 (브리프 섹션 6)');
+test(
+  '채점 시스템 프롬프트에 1단계(근거 나열) -> 2단계(점수 산정) 순서 강제 문구가 포함된다',
+  JUDGE_SYSTEM_PROMPT.includes('1단계') && JUDGE_SYSTEM_PROMPT.includes('2단계'),
+);
+test(
+  '채점 시스템 프롬프트에 애매한 경우 50점 중립 처리 규칙이 포함된다',
+  JUDGE_SYSTEM_PROMPT.includes('50점 중립'),
+);
+test(
+  'JSON 스키마에 3축 + 총평이 모두 required로 포함된다',
+  JSON.stringify(JUDGMENT_JSON_SCHEMA.required.sort()) ===
+    JSON.stringify(['논점_대응력', '논증_타당성', '설득력_전개', '총평'].sort()),
+);
+test(
+  '축별 스키마에 additionalProperties: false가 설정되어 있다 (구조화 출력 요구사항)',
+  JUDGMENT_JSON_SCHEMA.properties.논증_타당성.additionalProperties === false,
+);
+
+test('0~100 사이 점수는 그대로 반올림된다', clampScore(72.4) === 72);
+test('100점을 초과하는 점수는 100으로 클램프된다', clampScore(150) === 100);
+test('0점 미만(음수) 점수는 0으로 클램프된다', clampScore(-10) === 0);
+test('숫자가 아닌 값은 50점 중립으로 처리된다', clampScore('알수없음') === 50);
+
+const sampleRaw = {
+  논증_타당성: { 점수: 65.6, 근거_목록: [] },
+  논점_대응력: { 점수: 120, 근거_목록: [] },
+  설득력_전개: { 점수: -5, 근거_목록: [] },
+  총평: '테스트 총평입니다.',
+};
+const parsed = parseJudgmentResult(sampleRaw);
+test('parseJudgmentResult가 논증_타당성 점수를 validityScore로 매핑하고 클램프한다', parsed.validityScore === 66);
+test('parseJudgmentResult가 논점_대응력 점수를 100으로 클램프한다', parsed.responsivenessScore === 100);
+test('parseJudgmentResult가 설득력_전개 점수를 0으로 클램프한다', parsed.persuasionScore === 0);
+test('parseJudgmentResult가 총평을 그대로 전달한다', parsed.overallComment === '테스트 총평입니다.');
 
 console.log(`\n총 ${passed + failed}개 중 ${passed}개 통과, ${failed}개 실패\n`);
 process.exit(failed > 0 ? 1 : 0);

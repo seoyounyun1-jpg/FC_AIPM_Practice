@@ -65,3 +65,20 @@ export async function completeRound(roundId) {
 
   if (error) throw error;
 }
+
+/** 결과 화면(5단계)용: 라운드 + 주제 + 턴 전체 + 채점 결과를 한 번에 조회한다. */
+export async function getRoundForResult(roundId) {
+  const { data, error } = await supabase
+    .from('rounds')
+    .select(
+      'id, persona_type, tier, hint_used_count, status, ' +
+        'topics(title, description), ' +
+        'turns(turn_number, speaker, content), ' +
+        'judgments(validity_score, responsiveness_score, persuasion_score, overall_comment, raw_result)',
+    )
+    .eq('id', roundId)
+    .single();
+
+  if (error) throw error;
+  return data;
+}
