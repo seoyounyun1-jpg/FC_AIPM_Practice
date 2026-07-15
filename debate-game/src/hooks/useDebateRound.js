@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getLocalUserId } from '../lib/localUser.js';
-import { getUser } from '../lib/usersApi.js';
+import { getUser, applyUserProgress } from '../lib/usersApi.js';
 import { getTopicById, getTopicWeakness } from '../lib/topicsApi.js';
-import { createRound, addTurn, updateHintCount, completeRound } from '../lib/roundsApi.js';
+import {
+  createRound,
+  addTurn,
+  updateHintCount,
+  completeRound,
+  getCompletedRoundsWithScores,
+} from '../lib/roundsApi.js';
 import { getOpponentReply, getHint } from '../lib/debateApi.js';
 import { judgeRound } from '../lib/judgingApi.js';
 import { createJudgment } from '../lib/judgmentsApi.js';
 import { parseJudgmentResult } from '../lib/judgmentScoring.js';
+import { evaluateProgression } from '../lib/expProgression.js';
 import { assignPersonaForTopic } from '../lib/personaAssignment.js';
 import { nextTurnNumber, isRoundComplete } from '../lib/turnFlow.js';
 import { MAX_HINTS_PER_ROUND } from '../data/constants.js';
@@ -15,7 +22,8 @@ import { MAX_HINTS_PER_ROUND } from '../data/constants.js';
  * 라운드 상태 머신: loading -> ready <-> ai-thinking -> judging -> completed (| error)
  * ready 상태에서만 유저가 메시지를 보내거나 힌트를 요청할 수 있다.
  * 8턴이 끝나면 채점(judging)을 자동으로 트리거한다 — 논객 응답 생성과는
- * 별도의 API 호출로 분리(브리프 확정 원칙).
+ * 별도의 API 호출로 분리(브리프 확정 원칙). 채점 성공 시 경험치 누적 및
+ * 티어 승급 여부(6단계)까지 함께 처리한다.
  */
 export function useDebateRound(topicId, personaFromState) {
   const [status, setStatus] = useState('loading');
@@ -26,7 +34,9 @@ export function useDebateRound(topicId, personaFromState) {
   const [hintsUsed, setHintsUsed] = useState(0);
   const [hintText, setHintText] = useState(null);
   const [error, setError] = useState(null);
+  const [progression, setProgression] = useState(null);
   const weaknessRef = useRef(null);
+  const userRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,6 +54,7 @@ export function useDebateRound(topicId, personaFromState) {
 
         const resolvedPersona = personaFromState ?? assignPersonaForTopic(topicId);
         weaknessRef.current = weakness;
+        userRef.current = user;
 
         const newRound = await createRound({
           userId,
@@ -72,14 +83,36 @@ export function useDebateRound(topicId, personaFromState) {
     };
   }, [topicId, personaFromState]);
 
+  const applyProgression = useCallback(async (roundId, roundTier, scored) => {
+    const user = userRef.current;
+    if (!user) return;
+
+    const avgScore = (scored.validityScore + scored.responsivenessScore + scored.persuasionScore) / 3;
+    const completedRoundsInTier = await getCompletedRoundsWithScores(user.id, roundTier);
+    const result = evaluateProgression(avgScore, completedRoundsInTier, user.current_tier);
+
+    await applyUserProgress(user.id, {
+      expGain: result.expGain,
+      currentExp: user.exp,
+      newTier: result.promotedTier,
+    });
+
+    setProgression(result);
+  }, []);
+
   const finishRound = useCallback(
-    async (allTurns, roundId, topicData) => {
+    async (allTurns, roundId, roundTier, topicData) => {
       await completeRound(roundId);
       setStatus('judging');
       try {
         const raw = await judgeRound({ topic: topicData, turns: allTurns });
         const scored = parseJudgmentResult(raw);
         await createJudgment({ roundId, ...scored, rawResult: raw });
+        try {
+          await applyProgression(roundId, roundTier, scored);
+        } catch (progErr) {
+          console.error('[useDebateRound] 경험치/티어 갱신 실패', progErr);
+        }
         setStatus('completed');
       } catch (err) {
         console.error('[useDebateRound] 채점 실패', err);
@@ -87,7 +120,7 @@ export function useDebateRound(topicId, personaFromState) {
         setStatus('completed');
       }
     },
-    [],
+    [applyProgression],
   );
 
   const submitUserTurn = useCallback(
@@ -110,7 +143,7 @@ export function useDebateRound(topicId, personaFromState) {
         setTurns(turnsWithUser);
 
         if (isRoundComplete(userTurnNumber)) {
-          await finishRound(turnsWithUser, round.id, topic);
+          await finishRound(turnsWithUser, round.id, round.tier, topic);
           return;
         }
 
@@ -131,7 +164,7 @@ export function useDebateRound(topicId, personaFromState) {
         setTurns(turnsWithAi);
 
         if (isRoundComplete(aiTurnNumber)) {
-          await finishRound(turnsWithAi, round.id, topic);
+          await finishRound(turnsWithAi, round.id, round.tier, topic);
         } else {
           setStatus('ready');
         }
@@ -166,6 +199,7 @@ export function useDebateRound(topicId, personaFromState) {
     hintsUsed,
     hintText,
     error,
+    progression,
     submitUserTurn,
     requestHint,
   };

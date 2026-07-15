@@ -18,15 +18,16 @@ export default function RoundPage() {
     hintsUsed,
     hintText,
     error,
+    progression,
     submitUserTurn,
     requestHint,
   } = useDebateRound(topicId, state?.persona);
 
   useEffect(() => {
     if (status === 'completed' && round) {
-      navigate(`/result/${round.id}`, { replace: true });
+      navigate(`/result/${round.id}`, { replace: true, state: { progression } });
     }
-  }, [status, round, navigate]);
+  }, [status, round, progression, navigate]);
 
   if (status === 'loading') {
     return <div className="p-8 text-center text-neutral-500">라운드를 준비하는 중...</div>;

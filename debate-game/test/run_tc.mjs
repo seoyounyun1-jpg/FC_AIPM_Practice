@@ -32,6 +32,7 @@ import { assignPersonaForTopic } from '../src/lib/personaAssignment.js';
 import { nextTurnNumber, whoseTurn, isRoundComplete } from '../src/lib/turnFlow.js';
 import { clampScore, parseJudgmentResult } from '../src/lib/judgmentScoring.js';
 import { JUDGE_SYSTEM_PROMPT, JUDGMENT_JSON_SCHEMA } from '../src/prompts/judgePrompt.js';
+import { calcExpGain, nextTier, evaluateProgression } from '../src/lib/expProgression.js';
 import {
   COMMON_INSTRUCTION,
   PERSONA_SYSTEM_PROMPTS,
@@ -346,6 +347,38 @@ test('parseJudgmentResult가 논증_타당성 점수를 validityScore로 매핑�
 test('parseJudgmentResult가 논점_대응력 점수를 100으로 클램프한다', parsed.responsivenessScore === 100);
 test('parseJudgmentResult가 설득력_전개 점수를 0으로 클램프한다', parsed.persuasionScore === 0);
 test('parseJudgmentResult가 총평을 그대로 전달한다', parsed.overallComment === '테스트 총평입니다.');
+
+console.log('\n[TC-10] 경험치/티어 승급 로직 (브리프 섹션 4)');
+test('경험치는 라운드 평균 점수를 반올림한 값이다', calcExpGain(83.6) === 84);
+test('브론즈의 다음 티어는 실버다', nextTier('bronze') === 'silver');
+test('실버의 다음 티어는 골드다', nextTier('silver') === 'gold');
+test('골드의 다음 티어는 플래티넘이다', nextTier('gold') === 'platinum');
+test('플래티넘은 최고 티어이므로 다음 티어가 없다(null) — 승급 상한, 강등 없음', nextTier('platinum') === null);
+test('알 수 없는 티어는 null을 반환한다', nextTier('없는티어') === null);
+
+const twoGoodRounds = [
+  { topic_id: 'a', avgScore: 90 },
+  { topic_id: 'b', avgScore: 85 },
+];
+const threeGoodRounds = [...twoGoodRounds, { topic_id: 'c', avgScore: 80 }];
+
+test(
+  '70점 이상 라운드가 2개뿐이면 승급하지 않는다',
+  evaluateProgression(90, twoGoodRounds, 'bronze').shouldPromote === false,
+);
+test(
+  '70점 이상 라운드가 3개면 다음 티어로 승급한다',
+  evaluateProgression(80, threeGoodRounds, 'bronze').shouldPromote === true &&
+    evaluateProgression(80, threeGoodRounds, 'bronze').promotedTier === 'silver',
+);
+test(
+  '이미 플래티넘이면 조건을 만족해도 승급하지 않는다(promotedTier: null)',
+  evaluateProgression(80, threeGoodRounds, 'platinum').shouldPromote === false,
+);
+test(
+  'evaluateProgression은 경험치 획득량도 함께 반환한다',
+  evaluateProgression(77.2, twoGoodRounds, 'bronze').expGain === 77,
+);
 
 console.log(`\n총 ${passed + failed}개 중 ${passed}개 통과, ${failed}개 실패\n`);
 process.exit(failed > 0 ? 1 : 0);

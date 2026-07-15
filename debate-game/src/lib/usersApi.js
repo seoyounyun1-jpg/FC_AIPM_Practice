@@ -22,3 +22,19 @@ export async function getUser(userId) {
   if (error) throw error;
   return data;
 }
+
+/** 라운드 종료 후 경험치 누적(+티어 승급 시 current_tier 갱신). 강등 없음. */
+export async function applyUserProgress(userId, { expGain, currentExp, newTier }) {
+  const update = { exp: currentExp + expGain };
+  if (newTier) update.current_tier = newTier;
+
+  const { data, error } = await supabase
+    .from('users')
+    .update(update)
+    .eq('id', userId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   Radar,
   RadarChart,
@@ -20,6 +20,8 @@ const AXIS_LABELS = {
 export default function ResultPage() {
   const { roundId } = useParams();
   const navigate = useNavigate();
+  const { state } = useLocation();
+  const progression = state?.progression ?? null;
   const [round, setRound] = useState(null);
   const [error, setError] = useState(null);
 
@@ -76,6 +78,24 @@ export default function ResultPage() {
           {TIER_LABELS[round.tier]} · 상대: {round.persona_type} · 힌트 사용: {round.hint_used_count}회
         </p>
       </header>
+
+      {progression && (
+        <div className="mb-4 rounded-lg border border-violet-300 bg-violet-50 p-3 text-center dark:bg-violet-950">
+          <p className="text-sm text-violet-700 dark:text-violet-300">
+            경험치 +{progression.expGain} 획득
+            {progression.shouldPromote && (
+              <>
+                {' '}
+                · <span className="font-semibold">{TIER_LABELS[progression.promotedTier]} 티어로 승급!</span>
+              </>
+            )}
+          </p>
+          <p className="mt-1 text-xs text-violet-500">
+            티어 승급 진행도: {progression.tierProgress.successCount}/{progression.tierProgress.required}
+            (70점 이상 라운드 클리어)
+          </p>
+        </div>
+      )}
 
       <div className="mb-4 h-72 rounded-lg border border-neutral-200 p-2 dark:border-neutral-800">
         <ResponsiveContainer width="100%" height="100%">
